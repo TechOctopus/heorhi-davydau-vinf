@@ -279,3 +279,11 @@ pyrightconfig.json
 
 # Notebooks
 .notes
+
+# Local AI agent instructions and settings
+/AGENTS.md
+/CLAUDE.md
+/.claude/
+/.codex/
+/.cursor/
+/.cursorrules
