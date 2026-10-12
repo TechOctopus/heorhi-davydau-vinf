@@ -287,3 +287,6 @@ pyrightconfig.json
 /.codex/
 /.cursor/
 /.cursorrules
+
+# Downloaded pages and crawler checkpoints
+/data/
