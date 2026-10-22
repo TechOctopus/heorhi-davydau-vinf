@@ -3,7 +3,7 @@ import json
 import logging
 from pathlib import Path
 
-from crawler import DEFAULT_ARTISTS, SLUG, CrawlStopped, crawl, export_results
+from crawler import DEFAULT_ARTISTS, SLUG, CrawlStopped, crawl, summarize
 
 def main():
     parser = argparse.ArgumentParser(description="Download and resume a focused WikiArt HTML sample.")
@@ -21,11 +21,9 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     try:
         if args.command == "stats":
-            checkpoint = args.output / "state.json"
-            if not checkpoint.exists():
+            if not (args.output / "state.json").exists():
                 parser.error(f"No crawl found in {args.output}; run crawl first")
-            state = json.loads(checkpoint.read_text())
-            summary = export_results(args.output, state)
+            summary = summarize(args.output)
         else:
             summary = crawl(args.output, artists, args.max_pages, args.delay)
     except KeyboardInterrupt:
