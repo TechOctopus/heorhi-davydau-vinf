@@ -19,13 +19,23 @@ USER_AGENT = (
     "VINF-PaintingsCrawler/0.1 "
     "(+https://github.com/TechOctopus/heorhi-davydau-vinf; educational project)"
 )
-DEFAULT_ARTISTS = ["vincent-van-gogh", "claude-monet", "gustav-klimt"]
+DATA = Path("data/wikiart")
+# Start pages: WikiArt artist lists. The artists found on them define the crawl scope.
+SEEDS = [f"{BASE_URL}/en/{path}/text-list" for path in (
+    "popular-artists",
+    "artists-by-art-movement/impressionism",
+    "artists-by-art-movement/post-impressionism",
+    "artists-by-art-movement/realism",
+)]
 FIELDS = ["url", "final_url", "fetched_at", "status", "kind", "title",
           "content_type", "encoding", "bytes", "sha256", "file", "error"]
 HREF = re.compile(r"<a\b[^>]*?\s+href\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s>]+))", re.I)
 IGNORED_HTML = re.compile(r"<!--.*?-->|<(script|style)\b[^>]*>.*?</\1\s*>", re.I | re.S)
 TITLE = re.compile(r"<title\b[^>]*>(.*?)</title\s*>", re.I | re.S)
-SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+# <li><a href="/en/paul-cezanne">Paul Cezanne</a> <span>, 1839 - 1906</span> <span>, 588 artworks</span></li>
+# The artwork count separates artist entries from navigation links such as /en/about.
+ARTIST_ITEM = re.compile(r"<li\b[^>]*>\s*<a\b[^>]*?\s+href\s*=\s*[\"']/en/([a-z0-9]+(?:-[a-z0-9]+)*)[\"'][^>]*>"
+                         r"(?:(?!</li>).)*?\b\d+\s+artworks?\b", re.I | re.S)
 # Artwork slugs may hold percent-encoded letters (p%C3%A8re-tanguy) and underscores (not_detected_212152).
 ARTWORK_SLUG = re.compile(r"(?:[a-z0-9_-]|%[0-9A-Fa-f]{2})+")
 LOG = logging.getLogger(__name__)
@@ -66,6 +76,10 @@ def extract_links(document, base, artists):
     return list(links)
 
 
+def extract_artists(document):
+    return list(dict.fromkeys(ARTIST_ITEM.findall(IGNORED_HTML.sub("", document))))
+
+
 def page_title(document):
     match = TITLE.search(document)
     return " ".join(html.unescape(match[1]).split()) if match else ""
@@ -79,10 +93,6 @@ def atomic_write(path, content):
 
 def write_lines(path, lines):
     atomic_write(path, "".join(line + "\n" for line in lines).encode())
-
-
-def save_state(output, state):
-    atomic_write(output / "state.json", json.dumps(state, ensure_ascii=False, indent=2).encode())
 
 
 def append_lines(path, lines):
@@ -124,10 +134,6 @@ def read_records(output):
         row["status"] = int(row["status"] or 0)
         row["bytes"] = int(row["bytes"] or 0)
     return records
-
-
-def read_frontier(output):
-    return read_lines(output / "frontier.txt")
 
 
 def pending_urls(frontier, records):
@@ -199,30 +205,18 @@ def artist_list_url(artist):
     return f"{BASE_URL}/en/{artist}/all-works/text-list"
 
 
-def load_state(output, artists):
-    checkpoint = output / "state.json"
-    if not checkpoint.exists():
-        write_lines(output / "pages.tsv", ["\t".join(FIELDS)])
-        write_lines(output / "frontier.txt", [artist_list_url(artist) for artist in artists])
-        state = {"created_at": now(), "artists": artists}
-        save_state(output, state)
-        return state
-    state = json.loads(checkpoint.read_text())
-    if state["artists"] != artists:
-        raise ValueError("Use the same --artist values to resume, or choose a new --output directory.")
-    return state
-
-
 def summarize(output):
-    """pages.tsv and frontier.txt are authoritative; summary.json can always be regenerated."""
+    """The logs are authoritative; summary.json can always be regenerated."""
     records = read_records(output)
     downloaded = [row for row in records if row["file"]]
     summary = {
         "saved_pages": len(downloaded),
         "artwork_pages": sum(row["kind"] == "artwork" for row in downloaded),
         "list_pages": sum(row["kind"] == "list" for row in downloaded),
+        "artist_list_pages": sum(row["kind"] == "artists" for row in downloaded),
+        "artists": len(read_lines(output / "artists.txt")),
         "html_bytes": sum(row["bytes"] for row in downloaded),
-        "pending_urls": len(pending_urls(read_frontier(output), records)),
+        "pending_urls": len(pending_urls(read_lines(output / "frontier.txt"), records)),
         "skipped_or_failed": len(records) - len(downloaded),
         "http_statuses": dict(Counter(str(row["status"]) for row in records)),
         "updated_at": records[-1]["fetched_at"] if records else "",
@@ -254,7 +248,7 @@ def fetch_page(client, robots, url, artists):
         error = f"Not an HTML success (HTTP {status}, {content_type})"
     row = dict.fromkeys(FIELDS, "")
     row.update(url=url, final_url=final_url, fetched_at=now(), status=status,
-               kind="list" if final_url.endswith("/all-works/text-list") else "artwork",
+               kind="artists" if url in SEEDS else "list" if final_url.endswith("/all-works/text-list") else "artwork",
                content_type=content_type, bytes=0, error=error)
     if error:
         return row, None, None
@@ -268,21 +262,22 @@ def fetch_page(client, robots, url, artists):
     return row, body, document
 
 
-def crawl(output, artists, max_pages, delay=2.0, client=None):
-    output.mkdir(parents=True, exist_ok=True)
-    (output / "raw").mkdir(exist_ok=True)
-    state = load_state(output, artists)
-    for name in ("pages.tsv", "frontier.txt"):
+def crawl(output=DATA, client=None):
+    (output / "raw").mkdir(parents=True, exist_ok=True)
+    if not (output / "pages.tsv").exists():
+        write_lines(output / "pages.tsv", ["\t".join(FIELDS)])
+    for name in ("pages.tsv", "frontier.txt", "artists.txt"):
         drop_partial_line(output / name)
-    records = read_records(output)
-    frontier = read_frontier(output)
-    pending = deque(pending_urls(frontier, records))
-    known = set(frontier)
-    saved = sum(bool(row["file"]) for row in records)
-    del records, frontier
-    if saved >= max_pages or not pending:
+    frontier = read_lines(output / "frontier.txt")
+    new_seeds = [url for url in SEEDS if url not in frontier]
+    append_lines(output / "frontier.txt", new_seeds)
+    pending = deque(pending_urls(frontier + new_seeds, read_records(output)))
+    known = set(frontier + new_seeds)
+    artists = set(read_lines(output / "artists.txt"))
+    del frontier
+    if not pending:
         return summarize(output)
-    client = client or PoliteClient(delay=delay)
+    client = client or PoliteClient()
     try:
         status, headers, body = client.get(BASE_URL + "/robots.txt")
         if status != 200 or b"<html" in body.lower():
@@ -294,25 +289,27 @@ def crawl(output, artists, max_pages, delay=2.0, client=None):
         rate = robots.request_rate(USER_AGENT)
         if rate and rate.requests:
             client.delay = max(client.delay, rate.seconds / rate.requests)
-        state["settings"] = {
-            "user_agent": USER_AGENT, "delay_seconds": client.delay,
-            "connect_timeout_seconds": 10, "read_timeout_seconds": 30,
-            "max_attempts": 3, "max_response_bytes": 5_000_000,
-            "robots_checked_at": now(),
-        }
-        save_state(output, state)
-        while pending and saved < max_pages:
+        LOG.info("Delay %.1fs, %s artists known, %s URLs pending", client.delay, len(artists), len(pending))
+        while pending:
             url = pending[0]  # Remove only after its record has been appended.
             row, body, document = fetch_page(client, robots, url, artists)
             if body is not None:
+                if row["kind"] == "artists":
+                    found = extract_artists(document)
+                    if not found:
+                        raise CrawlStopped(f"No artists found at {url}; the page layout may have changed")
+                    append_lines(output / "artists.txt", [artist for artist in found if artist not in artists])
+                    artists.update(found)
+                    links = [artist_list_url(artist) for artist in found]
+                else:
+                    links = extract_links(document, row["final_url"], artists)
                 atomic_write(output / row["file"], body)
-                links = [link for link in extract_links(document, row["final_url"], artists) if link not in known]
+                links = [link for link in links if link not in known]
                 # Links go to disk before the record: a crash may repeat a page but never loses its links.
                 append_lines(output / "frontier.txt", links)
                 known.update(links)
                 pending.extend(links)
-                saved += 1
-                LOG.info("Saved %s/%s: %s (%s bytes)", saved, max_pages, row["title"], row["bytes"])
+                LOG.info("Saved %s (%s bytes, %s pending)", row["title"], row["bytes"], len(pending) - 1)
             else:
                 LOG.warning("Skipped %s: %s", url, row["error"])
             append_lines(output / "pages.tsv", [record_line(row)])
