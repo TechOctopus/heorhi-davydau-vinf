@@ -123,9 +123,9 @@ def drop_partial_line(path):
                 file.truncate(end)
 
 
-def record_line(row):
+def record_line(row, fields=FIELDS):
     # TSV cells cannot contain tabs or line breaks, so whitespace runs become one space.
-    return "\t".join(" ".join(str(row[field]).split()) for field in FIELDS)
+    return "\t".join(" ".join(str(row[field]).split()) for field in fields)
 
 
 def read_records(output):
