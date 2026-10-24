@@ -26,6 +26,7 @@ SEEDS = [f"{BASE_URL}/en/{path}/text-list" for path in (
     "artists-by-art-movement/impressionism",
     "artists-by-art-movement/post-impressionism",
     "artists-by-art-movement/realism",
+    "artists-by-art-movement/romanticism",
 )]
 FIELDS = ["url", "final_url", "fetched_at", "status", "kind", "title",
           "content_type", "encoding", "bytes", "sha256", "file", "error"]

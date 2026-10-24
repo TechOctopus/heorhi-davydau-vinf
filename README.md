@@ -14,7 +14,8 @@ uv run python -m unittest discover -s tests -v         # extractor tests on 22 s
 ```
 
 The crawl starts from the WikiArt artist lists in `SEEDS` (`src/crawler.py`):
-popular artists and the Impressionism, Post-Impressionism and Realism movements.
+popular artists and the Impressionism, Post-Impressionism, Realism and
+Romanticism movements.
 Stop it with `kill <PID>` or Ctrl+C; the same command continues where it stopped.
 
 ## Crawl output (`data/wikiart/`)
