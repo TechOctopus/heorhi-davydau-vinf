@@ -2,18 +2,25 @@ import argparse
 import json
 import logging
 
-from crawler import DATA, CrawlStopped, crawl, summarize
+from crawler import CrawlStopped, crawl
 from extractor import extract
+from indexer import build_index, search
+from stats import corpus_stats, count_tokens
 
-COMMANDS = {"crawl": crawl, "stats": lambda: summarize(DATA), "extract": extract}
+COMMANDS = {"crawl": crawl, "stats": corpus_stats, "extract": extract, "index": build_index,
+            "tokens": count_tokens}
 
 
 def main():
     parser = argparse.ArgumentParser(description="Paintings search engine over WikiArt data.")
-    parser.add_argument("command", choices=COMMANDS)
+    parser.add_argument("command", choices=[*COMMANDS, "search"])
+    parser.add_argument("query", nargs="*", help="words to search for (search command only)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     try:
+        if args.command == "search":
+            print(search(" ".join(args.query)))
+            return 0
         summary = COMMANDS[args.command]()
     except KeyboardInterrupt:
         print("\nStopped. Progress saved; run the same command to resume.")
