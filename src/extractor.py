@@ -24,7 +24,7 @@ SAME_AS = re.compile(r"itemprop\s*=\s*[\"']sameAs[\"']\s+content\s*=\s*[\"']([^\
 WIKIPEDIA = re.compile(r"<s\b[^>]*>\s*Wikipedia\s*:\s*</s>\s*<a\b[^>]*?\s+href\s*=\s*[\"']([^\"']+)", re.I)
 DESCRIPTION = re.compile(r"<p\b[^>]*\bitemprop\s*=\s*[\"']description[\"'][^>]*>(.*?)</p\s*>", re.I | re.S)
 TAG_LINK = re.compile(r"<a\b[^>]*?\s+href\s*=\s*[\"']/en/tag/[^\"']*[\"'][^>]*>(.*?)</a\s*>", re.I | re.S)
-YEAR = re.compile(r"\b\d{3,4}\b")
+YEAR = re.compile(r"\b(\d{1,4})\b(?:\s*(BC|AD)\b)?")
 LINE_BREAK = re.compile(r"<br\b[^>]*>", re.I)
 MARKUP = re.compile(r"<[^>]+>")
 
@@ -54,7 +54,10 @@ def extract_artwork(document, url):
             record[LABELS[label]] = clean(value)
     # "c.1610 - c.1612; Antwerp, Belgium": the place follows the first semicolon.
     date, _, place = record["date"].partition(";")
+    # Years BC are negative; in "c.3100 - c.2900 BC" the era at the end applies to the whole range.
     years = YEAR.findall(date)
+    era = years[-1][1] if years else ""
+    years = [str(-int(year) if (own or era) == "BC" else int(year)) for year, own in years]
     record.update(date=date.strip(), place=place.strip(),
                   year_from=years[0] if years else "", year_to=years[-1] if years else "")
     return record
