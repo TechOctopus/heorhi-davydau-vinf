@@ -5,6 +5,7 @@ description = "Educational paintings search engine: WikiArt crawling and informa
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "pyspark>=4.3.0",
     "requests>=2.34.2",
     "tiktoken>=0.14.0",
 ]
