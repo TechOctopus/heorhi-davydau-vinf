@@ -5,10 +5,12 @@ import logging
 from crawler import CrawlStopped, crawl
 from extractor import extract
 from indexer import build_index, search
+from spark_jobs import spark_extract, spark_join, spark_wiki
 from stats import corpus_stats, count_tokens
 
 COMMANDS = {"crawl": crawl, "stats": corpus_stats, "extract": extract, "index": build_index,
-            "tokens": count_tokens}
+            "tokens": count_tokens, "spark-extract": spark_extract,
+            "wiki": spark_wiki, "join": spark_join}
 
 
 def main():
